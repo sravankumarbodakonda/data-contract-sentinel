@@ -1,0 +1,8 @@
+name: data-contract-sentinel
+
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8050:8000"
