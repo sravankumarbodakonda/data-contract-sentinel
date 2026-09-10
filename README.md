@@ -2,7 +2,7 @@
 
 **Category:** Data Analytics & Engineering
 **Program tier:** MVP
-**Build status:** ✅ Built, tested, and Docker-verified (see § 8)
+**Build status:** ✅ Built, tested, Docker-verified, and has a browser UI (see § 8)
 **Part of:** [Sravan Kumar Bodakonda's 30-Day Portfolio Program](../../PORTFOLIO_PROGRAM.md)
 
 > Independent portfolio project. Not built for, or derived from, any employer. All schema and dataset content is synthetic.
@@ -30,17 +30,17 @@ Delivered and tested (14 pytest tests: pure diff/replay logic plus API integrati
 - Migration recommendations generated per breaking change, naming the specific affected consumers
 - **Replay**: real historical records (matching the old schema) checked against the *proposed* new schema, surfacing concrete violations — missing renamed fields, type mismatches, nulls in now-required fields — using actual data, not just reasoning about the schema abstractly
 - A real bug caught and fixed during verification (§ 8): a nullable field's simple *absence* from an old record was originally treated as a hard "required field missing" violation regardless of nullability, which would have falsely flagged every historical record for not having a field that didn't exist yet when they were created
+- **Browser UI:** a static HTML/vanilla-JS page (no build step, no separate frontend project) rendering the two contracts side by side, the diff table (color-coded by change type) with the risk formula and migration recommendations, and the replay results with a per-record violation table — all backed by the existing REST API, served by the same FastAPI app via `StaticFiles`
 
 Deliberately descoped, given real time constraints (see § 11):
 
 - **No database, no contract registry UI.** Contracts, lineage, and historical records are fixture data (`app/contracts/sample_data.py`), not registered/stored via an API — the original plan's "register datasets and contracts" workflow isn't built; this MVP compares two fixed, pre-defined versions.
 - **No Great Expectations, no Airflow, no Kafka.** The validation logic is plain Python; a scheduled/streaming contract-check pipeline wasn't built.
-- **No frontend.** Demonstrated via its REST API (curl commands in § 10).
 - **Rename detection is a same-type heuristic only** — it can't distinguish an actual rename from a coincidental remove-and-add of two unrelated same-type fields; the API response says so explicitly rather than overclaiming certainty.
 
 ## 5. Architecture & Stack (As Built)
 
-FastAPI backend (`backend/app`), no database. `contracts/models.py` defines `Contract`/`FieldSchema` (Pydantic) and the result types. `contracts/diff.py` is the core comparison + scoring logic — pure functions over two `Contract` objects and a lineage dict. `contracts/replay.py` validates a list of historical records (plain dicts) against a proposed contract. `contracts/sample_data.py` is the one deterministic demo scenario: a `customers` contract evolving from v1 to a proposed v2 with all four change types deliberately present. Docker for local run; GitHub Actions CI runs the full test suite (no service containers needed).
+FastAPI backend (`backend/app`), no database. `contracts/models.py` defines `Contract`/`FieldSchema` (Pydantic) and the result types. `contracts/diff.py` is the core comparison + scoring logic — pure functions over two `Contract` objects and a lineage dict. `contracts/replay.py` validates a list of historical records (plain dicts) against a proposed contract. `contracts/sample_data.py` is the one deterministic demo scenario: a `customers` contract evolving from v1 to a proposed v2 with all four change types deliberately present. A static HTML/vanilla-JS page under `app/static/index.html` is mounted at `/` via Starlette's `StaticFiles` (mounted last in `main.py`, after every `/api` and `/health` route) and calls that same API with `fetch` to render the contracts, diff, and replay panels. Docker for local run; GitHub Actions CI runs the full test suite (no service containers needed).
 
 ## 6. Datasets & External Dependencies
 
@@ -65,13 +65,17 @@ pip install -r requirements.txt
 python -m pytest tests/ -v       # 14 tests
 ```
 
-**Try it:**
+**Try it in a browser:** open `http://localhost:8050` — the contracts, diff/risk score, and replay violations all render there.
+
+**Try the API directly:**
 ```bash
 curl http://localhost:8050/api/contracts/diff
 curl http://localhost:8050/api/contracts/replay
 ```
 
 **A real bug caught during verification:** the first version of the replay validator treated a field's simple *absence* from a record identically to an explicit "required field missing" violation, regardless of whether the field was nullable. Live-testing the demo scenario surfaced a false positive: `loyalty_tier` (a new, nullable field) was flagged as "missing" on every historical record, even though a nullable field being absent from data that predates it is expected and correct, not a violation. Fixed by treating absence the same as an explicit null — a violation only if the field is non-nullable — and locked in with two new tests (`test_a_nullable_field_entirely_absent_from_an_old_record_is_not_a_violation` and its required-field counterpart) so the distinction can't silently regress.
+
+**The browser UI was added afterward,** once the diff/risk/replay logic itself was tested and correct: a static page served directly by FastAPI (`StaticFiles`, no separate frontend build) that renders all three API responses. Browser-verified with Playwright: the diff table's color-coded change-type badges, the risk formula, migration recommendations, and all 10 replay violations across the 4 seeded records rendered correctly, zero console errors.
 
 ## 9. Security & Privacy Notes
 

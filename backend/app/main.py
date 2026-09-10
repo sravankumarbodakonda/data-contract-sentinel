@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.contracts.diff import diff_contracts, generate_migration_recommendations, risk_formula_description, total_risk_score
 from app.contracts.models import ContractDiffResult, ReplayResult
@@ -38,3 +41,8 @@ def get_diff():
 @app.get("/api/contracts/replay", response_model=ReplayResult)
 def get_replay():
     return replay_records(CONTRACT_V2_PROPOSED, HISTORICAL_RECORDS_V1_SHAPE)
+
+
+# Mounted last, after every /api and /health route above, so it only ever serves the
+# static UI itself and never shadows a real API path.
+app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")
